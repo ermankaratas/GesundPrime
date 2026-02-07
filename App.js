@@ -18,7 +18,6 @@ import AdminOfficesScreen from './src/screens/admin/AdminOfficesScreen';
 import AdminReportsScreen from './src/screens/admin/AdminReportsScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen'; 
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen'; 
-import VerifyResetCodeScreen from './src/screens/VerifyResetCodeScreen';
 
 // Ana uygulama bileşeni
 const AppContent = () => {
@@ -39,7 +38,7 @@ const AppContent = () => {
   };
 
   const renderScreen = () => {
-    const commonProps = { onNavigate: navigateTo, currentScreen };
+    const commonProps = { onNavigate: navigateTo, route: { params: screenParams } }; // route objesi eklendi
     
     switch (currentScreen) {
       case 'welcome': 
@@ -51,13 +50,13 @@ const AppContent = () => {
       case 'location-select': 
         return <LocationSelectScreen {...commonProps} />;
       case 'office-list': 
-        return <OfficeListScreen {...commonProps} params={screenParams} />;
+        return <OfficeListScreen {...commonProps} />;
       case 'office-calendar': 
-        return <OfficeCalendarScreen {...commonProps} params={screenParams} />;
+        return <OfficeCalendarScreen {...commonProps} />;
       case 'reservation-confirm': 
-        return <ReservationConfirmScreen {...commonProps} params={screenParams} />;
+        return <ReservationConfirmScreen {...commonProps} />;
       case 'reservation-success': 
-        return <ReservationSuccessScreen {...commonProps} params={screenParams} />;
+        return <ReservationSuccessScreen {...commonProps} />;
       case 'my-reservations': 
         return <MyReservationsScreen {...commonProps} />;
       case 'calendar': 
@@ -77,9 +76,7 @@ const AppContent = () => {
       case 'forgot-password': 
         return <ForgotPasswordScreen {...commonProps} />;
       case 'reset-password': 
-        return <ResetPasswordScreen {...commonProps} params={screenParams} />;
-      case 'verify-reset-code':
-        return <VerifyResetCodeScreen {...commonProps} params={screenParams} />;
+        return <ResetPasswordScreen {...commonProps} />;
       default: 
         return <WelcomeScreen {...commonProps} />;
     }

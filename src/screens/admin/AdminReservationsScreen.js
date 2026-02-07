@@ -1,136 +1,85 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, TextInput } from 'react-native';
-import { supabase } from '../../services/supabase';
-import { globalStyles } from '../../styles/globalStyles';
-import { adminStyles } from '../../styles/adminStyles';
-import Header from '../../components/Header';
-import BottomNavigation from '../../components/BottomNavigation';
 
-const AdminReservationsScreen = ({ onNavigate, currentScreen }) => {
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+import { globalStyles } from '../../styles/globalStyles';
+import Header from '../../components/Header';
+import Card from '../../components/Card'; // Card bileşenini import et
+import API_URL from '../../config/api';
+import { formatDate } from '../../utils/helpers';
+
+const AdminReservationsScreen = ({ onNavigate }) => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchReservations = useCallback(async () => {
+  const fetchCombinedData = useCallback(async () => {
     setLoading(true);
-    
     try {
-      let query = supabase
-        .from('gp_reservations')
-        .select(`
-          *,
-          gp_users (name, email, phone),
-          gp_offices (name, gp_locations (name))
-        `)
-        .order('created_at', { ascending: false });
+      const [resRes, usersRes, officesRes] = await Promise.all([
+        fetch(`${API_URL}/api/admin/reservations`),
+        fetch(`${API_URL}/api/admin/users`),
+        fetch(`${API_URL}/api/offices`)
+      ]);
 
-      if (filter !== 'all') {
-        query = query.eq('status', filter);
-      }
+      if (!resRes.ok || !usersRes.ok || !officesRes.ok) throw new Error('Veriler alınamadı.');
 
-      const { data, error } = await query;
+      const reservationsData = await resRes.json();
+      const usersData = await usersRes.json();
+      const officesData = await officesRes.json();
 
-      if (!error && data) {
-        setReservations(data);
-      }
+      const combinedData = reservationsData.map(reservation => ({
+        ...reservation,
+        userName: usersData.find(u => u.id === reservation.userId)?.name || 'Bilinmeyen Kullanıcı',
+        officeName: officesData.find(o => o.id === reservation.officeId)?.name || 'Bilinmeyen Ofis',
+      }));
+
+      setReservations(combinedData);
     } catch (error) {
-      console.error('Fetch reservations error:', error);
+      console.error('Rezervasyon verilerini getirme hatası:', error);
+      Alert.alert('Hata', 'Rezervasyonları alırken bir sorun oluştu.');
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
-    fetchReservations();
-  }, [fetchReservations]);
+    fetchCombinedData();
+  }, [fetchCombinedData]);
 
-  const handleStatusUpdate = async (reservationId, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('gp_reservations')
-        .update({ status: newStatus })
-        .eq('id', reservationId);
-
-      if (!error) {
-        // Ofis durumunu güncelle
-        if (newStatus === 'confirmed') {
-          const reservation = reservations.find(r => r.id === reservationId);
-          if (reservation) {
-            await supabase
-              .from('gp_offices')
-              .update({ status: 'occupied' })
-              .eq('id', reservation.office_id);
-          }
-        } else if (newStatus === 'cancelled') {
-          const reservation = reservations.find(r => r.id === reservationId);
-          if (reservation) {
-            await supabase
-              .from('gp_offices')
-              .update({ status: 'available' })
-              .eq('id', reservation.office_id);
-          }
-        }
-        
-        fetchReservations(); // Listeyi yenile
-      }
-    } catch (error) {
-      console.error('Status update error:', error);
-    }
+  const handleDeleteReservation = (reservationId) => {
+    Alert.alert(
+      'Rezervasyonu İptal Et',
+      'Bu rezervasyonu kalıcı olarak iptal etmek istediğinizden emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'İptal Et',
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_URL}/api/admin/reservations/${reservationId}`, { method: 'DELETE' });
+              if (!response.ok) {
+                  const data = await response.json();
+                  throw new Error(data.message || 'Rezervasyon iptal edilemedi.');
+              }
+              Alert.alert('Başarılı', 'Rezervasyon başarıyla iptal edildi.');
+              fetchCombinedData();
+            } catch (error) {
+              console.error('Rezervasyon silme hatası:', error);
+              Alert.alert('Hata', error.message);
+            }
+          },
+          style: 'destructive',
+        },
+      ]
+    );
   };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('tr-TR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('tr-TR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'confirmed': return '#10b981';
-      case 'pending': return '#f59e0b';
-      case 'cancelled': return '#ef4444';
-      default: return '#6b7280';
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'confirmed': return 'Onaylandı';
-      case 'pending': return 'Beklemede';
-      case 'cancelled': return 'İptal Edildi';
-      default: return status;
-    }
-  };
-
-  // Filtrelenmiş rezervasyonlar
-  const filteredReservations = reservations.filter(reservation => {
-    const matchesSearch = searchQuery === '' || 
-      reservation.users?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reservation.offices?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reservation.users?.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    return matchesSearch;
-  });
 
   if (loading) {
     return (
       <View style={globalStyles.container}>
         <Header title="Rezervasyon Yönetimi" onBack={() => onNavigate('admin')} showBack={true} />
-        <View style={adminStyles.reservations.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={adminStyles.reservations.loadingText}>Rezervasyonlar yükleniyor...</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={globalStyles.colors.primary} />
+          <Text style={globalStyles.text.body}>Rezervasyonlar Yükleniyor...</Text>
         </View>
       </View>
     );
@@ -138,162 +87,60 @@ const AdminReservationsScreen = ({ onNavigate, currentScreen }) => {
 
   return (
     <View style={globalStyles.container}>
-      <Header 
-        title="Rezervasyon Yönetimi" 
-        onBack={() => onNavigate('admin')}
-        showBack={true}
-      />
-
-      <ScrollView style={globalStyles.content}>
-        {/* Arama ve Filtre */}
-        <View style={adminStyles.reservations.searchFilterContainer}>
-          <TextInput
-            style={adminStyles.reservations.searchInput}
-            placeholder="Kullanıcı, ofis veya email ara..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          
-          <View style={adminStyles.reservations.filterContainer}>
-            {[
-              { key: 'all', label: 'Tümü' },
-              { key: 'pending', label: 'Bekleyen' },
-              { key: 'confirmed', label: 'Onaylı' },
-              { key: 'cancelled', label: 'İptal' }
-            ].map((filterItem) => (
-              <TouchableOpacity
-                key={filterItem.key}
-                style={[
-                  adminStyles.reservations.filterButton,
-                  filter === filterItem.key && adminStyles.reservations.filterButtonActive
-                ]}
-                onPress={() => setFilter(filterItem.key)}
-              >
-                <Text style={[
-                  adminStyles.reservations.filterText,
-                  filter === filterItem.key && adminStyles.reservations.filterTextActive
-                ]}>
-                  {filterItem.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+      <Header title="Rezervasyon Yönetimi" onBack={() => onNavigate('admin')} showBack={true} />
+      <ScrollView style={styles.content}>
+        <View style={styles.header}>
+          <Text style={globalStyles.text.subtitle}>Toplam {reservations.length} Rezervasyon</Text>
         </View>
-
-        {/* İstatistik */}
-        <View style={adminStyles.reservations.statsBar}>
-          <View style={adminStyles.reservations.statItem}>
-            <Text style={adminStyles.reservations.statNumber}>{filteredReservations.length}</Text>
-            <Text style={adminStyles.reservations.statLabel}>Toplam</Text>
-          </View>
-          <View style={adminStyles.reservations.statItem}>
-            <Text style={[adminStyles.reservations.statNumber, { color: '#f59e0b' }]}>
-              {filteredReservations.filter(r => r.status === 'pending').length}
-            </Text>
-            <Text style={adminStyles.reservations.statLabel}>Bekleyen</Text>
-          </View>
-          <View style={adminStyles.reservations.statItem}>
-            <Text style={[adminStyles.reservations.statNumber, { color: '#10b981' }]}>
-              {filteredReservations.filter(r => r.status === 'confirmed').length}
-            </Text>
-            <Text style={adminStyles.reservations.statLabel}>Onaylı</Text>
-          </View>
-        </View>
-
-        {/* Rezervasyon Listesi */}
-        {filteredReservations.length === 0 ? (
-          <View style={globalStyles.emptyState}>
-            <Text style={globalStyles.emptyStateText}>
-              {searchQuery ? 'Aranan kriterlere uygun rezervasyon bulunamadı.' : 'Rezervasyon bulunmuyor.'}
-            </Text>
+        {reservations.length === 0 ? (
+          <View style={[globalStyles.content, styles.loadingContainer]}>
+            <Text style={globalStyles.text.body}>Gösterilecek rezervasyon bulunmuyor.</Text>
           </View>
         ) : (
-          filteredReservations.map((reservation) => (
-            <View key={reservation.id} style={adminStyles.reservations.reservationCard}>
-              <View style={adminStyles.reservations.reservationHeader}>
-                <View style={adminStyles.reservations.reservationInfo}>
-                  <Text style={adminStyles.reservations.officeName}>{reservation.offices?.name}</Text>
-                  <Text style={adminStyles.reservations.userInfo}>
-                    {reservation.users?.name} • {reservation.users?.specialty}
-                  </Text>
-                  <Text style={adminStyles.reservations.userContact}>{reservation.users?.email}</Text>
-                  {reservation.users?.phone && (
-                    <Text style={adminStyles.reservations.userContact}>📞 {reservation.users.phone}</Text>
-                  )}
-                </View>
-                <View style={[adminStyles.reservations.statusBadge, { backgroundColor: getStatusColor(reservation.status) }]}>
-                  <Text style={adminStyles.reservations.statusText}>{getStatusText(reservation.status)}</Text>
-                </View>
+          reservations.map((item) => (
+            <Card key={item.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={globalStyles.text.subtitle}>{item.officeName}</Text>
+                <Text style={globalStyles.text.caption}>Kullanıcı: {item.userName}</Text>
               </View>
-              
-              <View style={adminStyles.reservations.reservationDetails}>
-                <Text style={adminStyles.reservations.location}>📍 {reservation.offices?.locations?.name}</Text>
-                <Text style={adminStyles.reservations.dateTime}>
-                  🗓️ {formatDate(reservation.start_time)} • 🕐 {formatTime(reservation.start_time)} - {formatTime(reservation.end_time)}
-                </Text>
-                
-                {reservation.notes && (
-                  <Text style={adminStyles.reservations.notes}>📝 {reservation.notes}</Text>
-                )}
-                
-                <Text style={adminStyles.reservations.createdAt}>
-                  Oluşturulma: {new Date(reservation.created_at).toLocaleDateString('tr-TR')}
-                </Text>
+              <View style={styles.cardBody}>
+                <Text style={globalStyles.text.body}>Tarih: {formatDate(item.date)}</Text>
               </View>
-
-              {/* Action Butonları */}
-              <View style={adminStyles.reservations.actions}>
-                {reservation.status === 'pending' && (
-                  <>
-                    <TouchableOpacity 
-                      style={adminStyles.reservations.approveButton}
-                      onPress={() => handleStatusUpdate(reservation.id, 'confirmed')}
-                    >
-                      <Text style={adminStyles.reservations.approveButtonText}>✓ Onayla</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                      style={adminStyles.reservations.rejectButton}
-                      onPress={() => handleStatusUpdate(reservation.id, 'cancelled')}
-                    >
-                      <Text style={adminStyles.reservations.rejectButtonText}>✗ Reddet</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-
-                {reservation.status === 'confirmed' && (
-                  <TouchableOpacity 
-                    style={adminStyles.reservations.cancelButton}
-                    onPress={() => handleStatusUpdate(reservation.id, 'cancelled')}
-                  >
-                    <Text style={adminStyles.reservations.cancelButtonText}>İptal Et</Text>
-                  </TouchableOpacity>
-                )}
-
-                {reservation.status === 'cancelled' && (
-                  <TouchableOpacity 
-                    style={adminStyles.reservations.reopenButton}
-                    onPress={() => handleStatusUpdate(reservation.id, 'pending')}
-                  >
-                    <Text style={adminStyles.reservations.reopenButtonText}>Tekrar Aç</Text>
-                  </TouchableOpacity>
-                )}
-
+              <View style={styles.cardFooter}>
                 <TouchableOpacity 
-                  style={adminStyles.reservations.detailsButton}
-                  onPress={() => {/* Detay sayfasına git */}}
+                    style={[globalStyles.button.danger, styles.deleteButton]}
+                    onPress={() => handleDeleteReservation(item.id)}
                 >
-                  <Text style={adminStyles.reservations.detailsButtonText}>Detay</Text>
+                  <Text style={[globalStyles.text.button, styles.deleteButtonText]}>İptal Et</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </Card>
           ))
         )}
       </ScrollView>
-
-      <BottomNavigation onNavigate={onNavigate} currentScreen={currentScreen} />
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  content: {
+    paddingHorizontal: 16,
+  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 20 },
+  header: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: globalStyles.colors.gray[200], marginBottom: 8 },
+  card: { 
+    marginVertical: 8, 
+  },
+  cardHeader: { marginBottom: 12 },
+  cardBody: { marginBottom: 16 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'flex-end' },
+  deleteButton: { 
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+  },
+});
 
 export default AdminReservationsScreen;

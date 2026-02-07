@@ -1,9 +1,9 @@
+
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { globalStyles } from '../styles/globalStyles';
 import Header from '../components/Header';
-
 
 const LoginScreen = ({ onNavigate }) => {
   const [email, setEmail] = useState('');
@@ -18,7 +18,8 @@ const LoginScreen = ({ onNavigate }) => {
 
     const result = await login(email, password);
     if (result.success) {
-      onNavigate('home');
+      // Başarılı girişte ana ekrana yönlendirme App.js'de yönetilecek
+      // Bu component artık doğrudan yönlendirme yapmamalı
     } else {
       Alert.alert('Giriş Başarısız', result.error);
     }
@@ -46,7 +47,7 @@ const LoginScreen = ({ onNavigate }) => {
             <Text style={[globalStyles.text.subtitle, { marginBottom: 8 }]}>Kullanıcı Adı</Text>
             <TextInput
               style={globalStyles.input}
-              placeholder="Kullanıcı adınızı girin"
+              placeholder="E-posta adresinizi girin"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -85,17 +86,18 @@ const LoginScreen = ({ onNavigate }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Footer */}
+        {/* Footer: Kayıt Ekranına Yönlendirme */}
         <View style={{ alignItems: 'center' }}>
-          <Text style={[globalStyles.text.body, { textAlign: 'center', marginBottom: 8 }]}>
-            Hesabınız yok mu? 
-          </Text>
-          <Text style={{ color: '#2563eb', fontWeight: '600' }}>Bizimle İletitişime geçiniz</Text>
-          <Text style={globalStyles.text.caption}>Gesund Prime Ofis Sistemleri</Text>
+           <TouchableOpacity 
+            style={{ alignItems: 'center', padding: 16 }}
+            onPress={() => onNavigate('register')} // Yeni eklenen yönlendirme
+          >
+            <Text style={globalStyles.text.body}>
+              Hesabınız yok mu? <Text style={{ color: '#2563eb', fontWeight: '600' }}>Hesap Oluştur</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
-
-      {/* Login'de Bottom Navigation YOK */}
     </View>
   );
 };

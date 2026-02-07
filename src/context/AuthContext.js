@@ -1,6 +1,6 @@
+
 import React, { createContext, useState, useContext } from 'react';
-import { supabase } from '../services/supabase';
-import bcrypt from 'bcryptjs';
+import API_URL from '../config/api'; // Merkezi yapılandırma dosyasından URL'yi al
 
 const AuthContext = createContext();
 
@@ -19,57 +19,71 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      console.log('Login attempt:', email);
-      
-      // Supabase'den kullanıcıyı kontrol et
-      const { data: users, error } = await supabase
-        .from('gp_users')
-        .select('*')
-        .eq('email', email)
-        .eq('is_active', true);
+      const response = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      if (error) {
-        console.log('Supabase error:', error);
-        return { success: false, error: 'Veritabanı hatası' };
-      }
+      const data = await response.json();
 
-      if (!users || users.length === 0) {
-        console.log('No user found for email:', email);
-        return { success: false, error: 'Kullanıcı bulunamadı' };
-      }
-
-      const user = users[0];
-      console.log('User found:', user.email);
-
-      // BCRYPT ile şifre kontrolü
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      
-      if (isPasswordValid) {
-        setUser(user);
-        return { success: true, user: user };
+      if (response.ok) {
+        setUser(data.user);
+        return { success: true, user: data.user };
       } else {
-        console.log('Password mismatch');
-        return { success: false, error: 'Geçersiz şifre' };
+        return { success: false, error: data.message || 'Bilinmeyen bir hata oluştu' };
       }
-
     } catch (error) {
-      console.log('Login error:', error);
-      return { success: false, error: 'Giriş başarısız: ' + error.message };
+      console.error('Login network error:', error);
+      return { success: false, error: 'Sunucuya bağlanılamadı. Ağ bağlantınızı kontrol edin.' };
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => setUser(null);
+  const register = async (email, password) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return { success: true };
+      } else {
+        return { success: false, error: data.message || 'Kayıt sırasında bir hata oluştu.' };
+      }
+    } catch (error) {
+      console.error('Register network error:', error);
+      return { success: false, error: 'Sunucuya bağlanılamadı. Ağ bağlantınızı kontrol edin.' };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+  };
+
+  const value = {
+    user,
+    loading,
+    isAuthenticated: !!user,
+    login,
+    register,
+    logout,
+  };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      logout, 
-      loading, 
-      isAuthenticated: !!user 
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

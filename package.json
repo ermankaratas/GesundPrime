@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "bcryptjs": "^2.4.3",
     "@expo/vector-icons": "^14.1.0",
     "react-native-paper": "^5.10.0",
     "react-native-screens": "~4.11.1",
